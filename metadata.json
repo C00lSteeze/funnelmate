@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Copy of FunnelMate AI v3",
+  "description": "An AI-powered mobile-first affiliate marketing funnel builder. It helps beginners generate landing page copy, email sequences, and lead magnet ideas using Gemini's advanced reasoning and fast response models.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
