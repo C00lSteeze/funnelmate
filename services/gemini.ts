@@ -10,6 +10,7 @@ const PRO_MODEL = 'gemini-3-pro-preview';
 // Updated to a stable flash model to avoid preview instability
 const LITE_MODEL = 'gemini-2.5-flash'; 
 const VISION_MODEL = 'gemini-3-pro-preview';
+const IMAGE_MODEL = 'gemini-2.5-flash-image';
 
 /**
  * Helper to retry a function if it fails (useful for thinking model timeouts)
@@ -243,6 +244,104 @@ export const analyzeCompetitorImage = async (base64Image: string, mimeType: stri
       }
     });
     return response.text || "Analysis failed.";
+  });
+};
+
+/**
+ * Generates an image based on a prompt.
+ */
+export const generateImage = async (prompt: string): Promise<string> => {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: IMAGE_MODEL,
+      contents: {
+        parts: [
+          { text: prompt }
+        ]
+      }
+    });
+    
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    throw new Error("No image generated.");
+  });
+};
+
+/**
+ * Generates a high-converting textual post using the PAS framework.
+ */
+export const generateTextCopy = async (
+  framework: string,
+  topic: string,
+  audience: string,
+  format: string,
+  experience: string,
+  keyword: string
+): Promise<string> => {
+  const finalKeyword = keyword || "REVEAL";
+  const prompt = `
+      You are a high-converting content writer and social media strategist in 2026.
+      Your task is to create a highly engaging, natural-sounding, conversational piece of content using
+      the [${framework}] framework (Problem → Agitation → Solution).
+      The content must feel like a real human is talking — not robotic, not overly polished. It should
+      sound relatable, slightly informal, and tailored to a Nigerian audience (use familiar tone, simple
+      language, and culturally relevant expressions where appropriate).
+
+      INPUT DETAILS
+      Topic/Title: [${topic}]
+      Target Audience: [${audience}]
+      Content Format: [${format}]
+      Creator Identity (Who you are): [${experience}]
+      Aim of the Content: Break false beliefs and position myself as someone with real insight
+
+      CONTENT INSTRUCTIONS
+      1. Use the ${framework} structure strictly:
+      - Start with a strong, attention-grabbing desperate Problem
+      - Deeply Agitate the problem (make it feel real, urgent, frustrating)
+      - Deliver a clear, practical Solution
+      2. Keep the tone:
+      - Conversational, like you're talking to a friend
+      - Simple and easy to read
+      - Slightly informal (you can use light Nigerian expressions if it fits naturally)
+      3. Make it highly engaging:
+      - Use short sentences
+      - Break lines often
+      - Add pattern interrupts (questions, emphasis, pauses)
+      4. Avoid:
+      - Generic advice
+      - Overly motivational fluff
+      - Complex grammar or big English
+      5. Make it feel real and believable, not like AI
+
+      FORMAT-SPECIFIC RULES
+      Text Post:
+      - Use engaging formatting (bullet points, bold text where appropriate)
+      - Ensure the hook is strong enough for text-only consumption
+      - End with a clear Call to Action
+
+      Use variations like:
+      - “Comment ${finalKeyword} if you want in”
+      - “Send me ${finalKeyword}”
+      - “Type ${finalKeyword} and I’ll show you how”
+      Make it feel natural, not forced.
+
+      FINAL OUTPUT REQUIREMENTS
+      - Must sound 100% human
+      - Must be clear, engaging, and persuasive
+      - Must follow ${framework} cleanly
+      - Must match the selected format exactly
+  `;
+
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: LITE_MODEL,
+      contents: prompt,
+    });
+    return response.text || "No copy generated.";
   });
 };
 

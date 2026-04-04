@@ -17,7 +17,7 @@ export interface UserProfile {
 export interface FunnelProject {
   id: string;
   name: string;
-  type: 'STRATEGY' | 'COPY' | 'ANALYSIS' | 'CAMPAIGN_WA' | 'CAMPAIGN_EMAIL' | 'CHAT_SESSION' | 'VIDEO_SCRIPT';
+  type: 'STRATEGY' | 'COPY' | 'ANALYSIS' | 'CAMPAIGN_WA' | 'CAMPAIGN_EMAIL' | 'CHAT_SESSION' | 'VIDEO_SCRIPT' | 'IMAGE_GENERATION';
   niche?: string;
   productName?: string;
   targetAudience?: string;
