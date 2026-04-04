@@ -6,10 +6,18 @@ export enum AppView {
   TOOLS = 'TOOLS'
 }
 
+export interface UserProfile {
+  name: string;
+  email: string;
+  avatar: string;
+  plan: 'free' | 'pro';
+  subscriptionExpiry?: number;
+}
+
 export interface FunnelProject {
   id: string;
   name: string;
-  type: 'STRATEGY' | 'COPY' | 'ANALYSIS' | 'CAMPAIGN_WA' | 'CAMPAIGN_EMAIL' | 'CHAT_SESSION';
+  type: 'STRATEGY' | 'COPY' | 'ANALYSIS' | 'CAMPAIGN_WA' | 'CAMPAIGN_EMAIL' | 'CHAT_SESSION' | 'VIDEO_SCRIPT';
   niche?: string;
   productName?: string;
   targetAudience?: string;

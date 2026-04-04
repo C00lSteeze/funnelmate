@@ -4,14 +4,20 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
-  // process.cwd() is standard in Node.js, casting to any to avoid type errors if @types/node is missing
   const env = loadEnv(mode, (process as any).cwd(), '');
 
   return {
     plugins: [react()],
     define: {
-      // Replaces process.env.API_KEY in your client code with the build-time value
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Expose API Keys and Configs to the client
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      'process.env.FIREBASE_API_KEY': JSON.stringify(env.FIREBASE_API_KEY),
+      'process.env.FIREBASE_AUTH_DOMAIN': JSON.stringify(env.FIREBASE_AUTH_DOMAIN),
+      'process.env.FIREBASE_PROJECT_ID': JSON.stringify(env.FIREBASE_PROJECT_ID),
+      'process.env.FIREBASE_STORAGE_BUCKET': JSON.stringify(env.FIREBASE_STORAGE_BUCKET),
+      'process.env.FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.FIREBASE_MESSAGING_SENDER_ID),
+      'process.env.FIREBASE_APP_ID': JSON.stringify(env.FIREBASE_APP_ID)
     },
     build: {
       outDir: 'dist',

@@ -1,10 +1,14 @@
 import { GoogleGenAI, GenerateContentResponse, Chat, Schema } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+
+// Fail fast if no API key in dev, but allow app to load (calls will fail)
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 // -- MODELS --
 const PRO_MODEL = 'gemini-3-pro-preview';
-const LITE_MODEL = 'gemini-2.0-flash-lite-preview-02-05';
+// Updated to a stable flash model to avoid preview instability
+const LITE_MODEL = 'gemini-2.5-flash'; 
 const VISION_MODEL = 'gemini-3-pro-preview';
 
 /**
@@ -12,14 +16,40 @@ const VISION_MODEL = 'gemini-3-pro-preview';
  */
 async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
   try {
+    if (!apiKey) throw new Error("API Key is missing. Please configure your environment.");
     return await fn();
-  } catch (error) {
+  } catch (error: any) {
     if (retries > 0) {
       console.warn(`Retrying operation... (${retries} attempts left)`, error);
+      // Simple exponential backoff
+      await new Promise(r => setTimeout(r, 1000 * (3 - retries))); 
       return withRetry(fn, retries - 1);
     }
     console.error("Operation failed after retries:", error);
-    throw error;
+    
+    // Normalize error message for UI
+    let msg = error.message || "";
+    // Handle cases where error is an object/json
+    if (typeof error === 'object' && !msg) {
+        try {
+            msg = JSON.stringify(error);
+        } catch (e) {
+            msg = "Unknown error";
+        }
+    }
+
+    // Common Google GenAI SDK XHR/Network errors
+    if (msg.includes("Rpc failed") || msg.includes("xhr error") || msg.includes("fetch failed") || msg.includes("NetworkError")) {
+        msg = "Network connection error. Please check your internet and try again.";
+    } else if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
+        msg = "High traffic. Please wait a moment and try again.";
+    } else if (msg.includes("503") || msg.includes("500") || msg.includes("internal error")) {
+        msg = "AI Service is temporarily unavailable. Please try again.";
+    } else if (msg.includes("API Key")) {
+        msg = "Invalid API Key configuration.";
+    }
+    
+    throw new Error(msg);
   }
 }
 
@@ -213,6 +243,82 @@ export const analyzeCompetitorImage = async (base64Image: string, mimeType: stri
       }
     });
     return response.text || "Analysis failed.";
+  });
+};
+
+/**
+ * Generates a high-converting video script using the PAS framework.
+ */
+export const generateVideoScript = async (
+  framework: string,
+  topic: string,
+  audience: string,
+  format: string,
+  experience: string,
+  keyword: string
+): Promise<string> => {
+  const finalKeyword = keyword || "REVEAL";
+  const prompt = `
+      You are a high-converting content writer and social media strategist in 2026.
+      Your task is to create a highly engaging, natural-sounding, conversational piece of content using
+      the [${framework}] framework (Problem → Agitation → Solution).
+      The content must feel like a real human is talking — not robotic, not overly polished. It should
+      sound relatable, slightly informal, and tailored to a Nigerian audience (use familiar tone, simple
+      language, and culturally relevant expressions where appropriate).
+
+      INPUT DETAILS
+      Topic/Title: [${topic}]
+      Target Audience: [${audience}]
+      Content Format: [${format}]
+      Creator Identity (Who you are): [${experience}]
+      Aim of the Content: Break false beliefs and position myself as someone with real insight
+
+      CONTENT INSTRUCTIONS
+      1. Use the ${framework} structure strictly:
+      - Start with a strong, attention-grabbing desperate Problem
+      - Deeply Agitate the problem (make it feel real, urgent, frustrating)
+      - Deliver a clear, practical Solution
+      2. Keep the tone:
+      - Conversational, like you're talking to a friend
+      - Simple and easy to read
+      - Slightly informal (you can use light Nigerian expressions if it fits naturally)
+      3. Make it highly engaging:
+      - Use short sentences
+      - Break lines often
+      - Add pattern interrupts (questions, emphasis, pauses)
+      4. Avoid:
+      - Generic advice
+      - Overly motivational fluff
+      - Complex grammar or big English
+      5. Make it feel real and believable, not like AI
+
+      FORMAT-SPECIFIC RULES
+      Video Script:
+      Include:
+      - Verbal Hook (what is said)
+      - Written Hook (on-screen text)
+      - Keep flow fast-paced and natural
+      - Use pauses and emphasis
+
+      Use variations like:
+      - “Comment ${finalKeyword} if you want in”
+      - “Send me ${finalKeyword}”
+      - “Type ${finalKeyword} and I’ll show you how”
+      Make it feel natural, not forced.
+
+      FINAL OUTPUT REQUIREMENTS
+      - Must sound 100% human
+      - Must be clear, engaging, and persuasive
+      - Must follow ${framework} cleanly
+      - Must match the selected format exactly
+  `;
+
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: LITE_MODEL,
+      contents: prompt,
+    });
+    return response.text || "No script generated.";
   });
 };
 

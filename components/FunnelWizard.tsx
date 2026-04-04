@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { generateFunnelStrategy } from '../services/gemini';
 import { FunnelProject } from '../types';
-import { ArrowRight, CheckCircle2, Loader2, Sparkles, AlertCircle, Monitor, Mail, PlayCircle, Save } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, Sparkles, AlertCircle, Monitor, Mail, PlayCircle, Save, Download, HelpCircle, ChevronDown, ChevronUp, Users, DollarSign } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import { Tooltip } from './Tooltip';
 
 interface FunnelWizardProps {
-  onComplete: (project: FunnelProject) => void;
+  onAutoSave: (project: FunnelProject) => void;
   onToolRequest: (type: 'lead_magnet' | 'email_sequence' | 'landing_page', topic: string) => void;
+  onDownload: (project: FunnelProject) => void;
+  initialData?: FunnelProject;
 }
 
 // Data structure for the parsed result
@@ -26,10 +29,11 @@ interface ParsedStrategy {
     steps: ParsedStep[];
 }
 
-const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }) => {
+const FunnelWizard: React.FC<FunnelWizardProps> = ({ onAutoSave, onToolRequest, onDownload, initialData }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const [formData, setFormData] = useState({
     niche: '',
@@ -38,7 +42,21 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
   });
 
   const [generatedStrategy, setGeneratedStrategy] = useState<string>('');
-  
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+      if (initialData) {
+          setFormData({
+              niche: initialData.niche || '',
+              productName: initialData.productName || '',
+              targetAudience: initialData.targetAudience || ''
+          });
+          setGeneratedStrategy(initialData.content);
+          setCurrentProjectId(initialData.id);
+          setStep(4);
+      }
+  }, [initialData]);
+
   // Helper to append voice text
   const handleVoiceInput = (field: keyof typeof formData) => (text: string) => {
       setFormData(prev => ({
@@ -102,6 +120,19 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
       return { hook, targeting, steps };
   };
 
+  const createProjectObject = (content: string, id?: string): FunnelProject => {
+    return {
+      id: id || Date.now().toString(),
+      name: `${formData.productName} Funnel`,
+      type: 'STRATEGY',
+      niche: formData.niche,
+      productName: formData.productName,
+      targetAudience: formData.targetAudience,
+      content: content,
+      createdAt: Date.now()
+    };
+  };
+
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
@@ -112,6 +143,12 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
         formData.targetAudience
       );
       setGeneratedStrategy(strategy);
+      
+      // Auto Save immediately upon generation
+      const newProject = createProjectObject(strategy);
+      setCurrentProjectId(newProject.id);
+      onAutoSave(newProject);
+      
       setStep(4); // Move to results
     } catch (err) {
       setError("Failed to generate strategy. Please try again.");
@@ -120,19 +157,80 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
     }
   };
 
-  const handleSave = () => {
-    const newProject: FunnelProject = {
-      id: Date.now().toString(),
-      name: `${formData.productName} Funnel`,
-      type: 'STRATEGY',
-      niche: formData.niche,
-      productName: formData.productName,
-      targetAudience: formData.targetAudience,
-      content: generatedStrategy,
-      createdAt: Date.now()
-    };
-    onComplete(newProject);
+  const handleDownload = () => {
+    if (!currentProjectId) return;
+    const project = createProjectObject(generatedStrategy, currentProjectId);
+    onDownload(project);
   };
+
+  // -- Render Guide --
+  const renderGuide = () => (
+    <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-2">
+        <button
+            onClick={() => setShowGuide(!showGuide)}
+            className="flex items-center justify-between w-full text-left group"
+        >
+            <div className="flex items-center gap-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-full text-blue-600 dark:text-blue-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
+                   <HelpCircle size={18} />
+                </div>
+                <div>
+                   <span className="block font-semibold text-gray-800 dark:text-gray-200 text-sm">New to this? See how it works</span>
+                </div>
+            </div>
+            {showGuide ? <ChevronUp size={18} className="text-gray-400"/> : <ChevronDown size={18} className="text-gray-400"/>}
+        </button>
+
+        {showGuide && (
+            <div className="mt-4 bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-100 dark:border-gray-700 shadow-sm space-y-5 text-sm text-gray-600 dark:text-gray-300">
+                <p className="leading-relaxed">
+                    Most beginners fail because they send people directly to an affiliate link. People don't buy from strangers! 
+                    <br/><br/>
+                    You need a <strong>Funnel</strong> to build trust first. Here is the process we are building for you:
+                </p>
+
+                {/* Visual Flow */}
+                <div className="flex items-center justify-between gap-2 py-2 px-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div className="flex flex-col items-center text-center gap-1.5 flex-1">
+                        <div className="w-10 h-10 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600 shadow-sm text-gray-500 dark:text-gray-400">
+                            <Users size={18} />
+                        </div>
+                        <span className="text-[9px] font-bold uppercase text-gray-400 tracking-wide">Traffic</span>
+                    </div>
+                     <ArrowRight size={14} className="text-gray-300 shrink-0" />
+                    <div className="flex flex-col items-center text-center gap-1.5 flex-1">
+                        <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center border border-blue-200 dark:border-blue-800 shadow-sm text-blue-600 dark:text-blue-400">
+                            <Monitor size={18} />
+                        </div>
+                        <span className="text-[9px] font-bold uppercase text-blue-600 dark:text-blue-400 tracking-wide">Your Page</span>
+                    </div>
+                     <ArrowRight size={14} className="text-gray-300 shrink-0" />
+                    <div className="flex flex-col items-center text-center gap-1.5 flex-1">
+                        <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center border border-green-200 dark:border-green-800 shadow-sm text-green-600 dark:text-green-400">
+                            <DollarSign size={18} />
+                        </div>
+                        <span className="text-[9px] font-bold uppercase text-green-600 dark:text-green-400 tracking-wide">Sale</span>
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <div className="flex gap-3 items-start">
+                        <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
+                        <p className="text-xs leading-relaxed"><strong className="text-gray-800 dark:text-gray-200">The Capture Page:</strong> We'll write a headline that makes people curious so they give you their email.</p>
+                    </div>
+                    <div className="flex gap-3 items-start">
+                         <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
+                        <p className="text-xs leading-relaxed"><strong className="text-gray-800 dark:text-gray-200">The Bridge:</strong> A simple script where you introduce yourself and the product to build trust.</p>
+                    </div>
+                    <div className="flex gap-3 items-start">
+                         <div className="w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
+                        <p className="text-xs leading-relaxed"><strong className="text-gray-800 dark:text-gray-200">The Emails:</strong> We'll write follow-up emails to sell to people who didn't buy immediately.</p>
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
+  );
 
   // -- Render Steps --
 
@@ -148,14 +246,18 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
             <Tooltip content="The specific market category you are targeting (e.g., 'Keto Diet', 'SaaS Marketing', 'Dog Training')." />
         </label>
         <div className="relative">
-          <input
-            type="text"
+          <textarea
+            rows={1}
             value={formData.niche}
-            onChange={(e) => setFormData({ ...formData, niche: e.target.value })}
+            onChange={(e) => {
+                setFormData({ ...formData, niche: e.target.value });
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+            }}
             placeholder="e.g., Weight Loss for Moms, AI Tools for Biz"
-            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 resize-none overflow-hidden min-h-[46px]"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <div className="absolute right-2 top-3">
              <VoiceInput onTranscript={handleVoiceInput('niche')} />
           </div>
         </div>
@@ -193,14 +295,18 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
             <Tooltip content="The name of the product you are promoting. Adding a short description helps the AI understand its features." />
         </label>
         <div className="relative">
-          <input
-            type="text"
+          <textarea
+            rows={1}
             value={formData.productName}
-            onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+            onChange={(e) => {
+                setFormData({ ...formData, productName: e.target.value });
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+            }}
             placeholder="e.g., ClickFunnels, JavaBurn, Jasper AI"
-            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 resize-none overflow-hidden min-h-[46px]"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <div className="absolute right-2 top-3">
              <VoiceInput onTranscript={handleVoiceInput('productName')} />
           </div>
         </div>
@@ -235,14 +341,18 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
             <Tooltip content="Be specific! E.g., 'Busy moms over 30 who want to lose weight' works better than just 'Women'." />
         </label>
         <div className="relative">
-          <input
-            type="text"
+          <textarea
+            rows={1}
             value={formData.targetAudience}
-            onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value })}
+            onChange={(e) => {
+                setFormData({ ...formData, targetAudience: e.target.value });
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+            }}
             placeholder="e.g., Busy moms over 30, Small business owners"
-            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+            className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 resize-none overflow-hidden min-h-[46px]"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <div className="absolute right-2 top-3">
              <VoiceInput onTranscript={handleVoiceInput('targetAudience')} />
           </div>
         </div>
@@ -290,7 +400,7 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
         <div className="animate-in fade-in duration-500 pb-20">
           <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Your Funnel Strategy</h2>
-              <button onClick={() => setStep(1)} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">Start Over</button>
+              <button onClick={() => setStep(1)} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">New Project</button>
           </div>
 
           {/* Strategy Overview Card */}
@@ -377,10 +487,10 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
           {/* Action Bar */}
           <div className="sticky bottom-4 mt-8 flex gap-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl z-20">
              <button
-                onClick={handleSave}
-                className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 shadow-lg shadow-green-200 dark:shadow-green-900/20 flex items-center justify-center gap-2"
+                onClick={handleDownload}
+                className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center gap-2"
              >
-                <Save size={18} /> Save Strategy
+                <Download size={18} /> Download for Offline Use
              </button>
           </div>
         </div>
@@ -388,13 +498,15 @@ const FunnelWizard: React.FC<FunnelWizardProps> = ({ onComplete, onToolRequest }
   };
 
   return (
-    <div className="p-4 h-full overflow-y-auto no-scrollbar">
+    <div className="p-4 h-full overflow-y-auto no-scrollbar pb-24">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Funnel Builder</h2>
       
       {step === 1 && renderStep1()}
       {step === 2 && renderStep2()}
       {step === 3 && renderStep3()}
       {step === 4 && renderResults()}
+      
+      {step < 4 && renderGuide()}
     </div>
   );
 };

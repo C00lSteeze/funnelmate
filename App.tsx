@@ -4,12 +4,26 @@ import Layout from './components/Layout';
 import FunnelWizard from './components/FunnelWizard';
 import ChatCoach from './components/ChatCoach';
 import QuickTools from './components/QuickTools';
-import { AppView, FunnelProject } from './types';
-import { Plus, History, Mail, Download, FileText, Image as ImageIcon, MessageCircle, MessageSquare } from 'lucide-react';
+import AuthScreen from './components/AuthScreen';
+import { AppView, FunnelProject, UserProfile } from './types';
+import { Plus, History, Mail, Download, FileText, Image as ImageIcon, MessageCircle, MessageSquare, ArrowRight } from 'lucide-react';
 
 const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('funnel_user');
+        return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  });
+
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  const [activeProject, setActiveProject] = useState<FunnelProject | null>(null);
   
+  // Navigation State for Animations
+  const [slideDirection, setSlideDirection] = useState<'forward' | 'backward' | 'none'>('none');
+  const viewOrder = [AppView.DASHBOARD, AppView.WIZARD, AppView.TOOLS, AppView.CHAT];
+
   // Initialize projects from localStorage if available
   const [projects, setProjects] = useState<FunnelProject[]>(() => {
     if (typeof window !== 'undefined') {
@@ -27,14 +41,67 @@ const App: React.FC = () => {
   
   const [toolParams, setToolParams] = useState<{ topic: string, type: any } | null>(null);
 
-  // Persist projects to localStorage whenever they change
+  // Persist projects
   useEffect(() => {
     localStorage.setItem('funnel_projects', JSON.stringify(projects));
   }, [projects]);
 
-  const handleSaveProject = (project: FunnelProject) => {
-    setProjects(prev => [project, ...prev]);
-    setCurrentView(AppView.DASHBOARD);
+  // Persist User
+  useEffect(() => {
+      if (currentUser) {
+          localStorage.setItem('funnel_user', JSON.stringify(currentUser));
+      } else {
+          localStorage.removeItem('funnel_user');
+      }
+  }, [currentUser]);
+
+  const handleLogin = (user: UserProfile) => {
+      setCurrentUser(user);
+      setCurrentView(AppView.DASHBOARD);
+  };
+
+  const handleLogout = () => {
+      setCurrentUser(null);
+  };
+  
+  const handleNavigation = (view: AppView) => {
+    if (view === currentView) return;
+
+    const prevIndex = viewOrder.indexOf(currentView);
+    const nextIndex = viewOrder.indexOf(view);
+    
+    if (nextIndex > prevIndex) setSlideDirection('forward');
+    else if (nextIndex < prevIndex) setSlideDirection('backward');
+    else setSlideDirection('none');
+
+    setCurrentView(view);
+    if (view !== AppView.CHAT) setActiveProject(null);
+  };
+
+  // "Auto-Save" Server Simulation
+  const handleAutoSave = (project: FunnelProject) => {
+    setProjects(prev => {
+        const exists = prev.findIndex(p => p.id === project.id);
+        if (exists >= 0) {
+            const updated = [...prev];
+            updated[exists] = project;
+            return updated;
+        } else {
+            return [project, ...prev];
+        }
+    });
+  };
+
+  const handleOpenProject = (project: FunnelProject) => {
+      setActiveProject(project);
+      if (project.type === 'CHAT_SESSION') {
+          handleNavigation(AppView.CHAT);
+      } else if (project.type === 'STRATEGY') {
+          handleDownloadPDF(project);
+      } else {
+          alert("Content copied to clipboard!");
+          navigator.clipboard.writeText(project.content);
+      }
   };
 
   const handleGenerateEmails = (project: FunnelProject) => {
@@ -42,7 +109,7 @@ const App: React.FC = () => {
         topic: `${project.productName} (Target Audience: ${project.targetAudience})`,
         type: 'email_sequence'
     });
-    setCurrentView(AppView.TOOLS);
+    handleNavigation(AppView.TOOLS);
   };
 
   const handleToolRequest = (type: any, topic: string) => {
@@ -50,7 +117,7 @@ const App: React.FC = () => {
         topic: topic,
         type: type
     });
-    setCurrentView(AppView.TOOLS);
+    handleNavigation(AppView.TOOLS);
   };
 
   const handleDownloadPDF = (project: FunnelProject) => {
@@ -171,20 +238,16 @@ const App: React.FC = () => {
            
            children.forEach(child => {
                if (child.tagName === 'H1') {
-                   // Strategy Overview Header
                    currentWrapper = document.createElement('div');
                    currentWrapper.className = 'overview-box';
-                   child.style.display = 'none'; // Hide the H1 inside the box, the content follows
+                   child.style.display = 'none';
                    contentDiv.appendChild(currentWrapper);
-                   // The actual content for overview usually follows immediately
                } else if (child.tagName === 'H2') {
-                   // New Step Start
                    currentWrapper = document.createElement('div');
                    currentWrapper.className = 'step-card';
                    contentDiv.appendChild(currentWrapper);
                    currentWrapper.appendChild(child);
                } else if (child.tagName === 'STRONG' && child.textContent.toLowerCase().includes('call to action')) {
-                   // CTA styling
                    child.className = 'cta-text';
                    child.style.display = 'block';
                    if (currentWrapper) currentWrapper.appendChild(child);
@@ -192,7 +255,7 @@ const App: React.FC = () => {
                    if (currentWrapper) {
                        currentWrapper.appendChild(child);
                    } else {
-                       contentDiv.appendChild(child); // Fallback for unstructured top content
+                       contentDiv.appendChild(child);
                    }
                }
            });
@@ -206,15 +269,21 @@ const App: React.FC = () => {
     printWindow.document.close();
   };
 
+  const getAnimationClass = () => {
+      if (slideDirection === 'forward') return 'animate-slide-right';
+      if (slideDirection === 'backward') return 'animate-slide-left';
+      return 'animate-fade';
+  };
+
   const renderDashboard = () => (
     <div className="p-4 space-y-6">
       
       {/* 1. Welcome / CTA */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20">
-        <h2 className="text-2xl font-bold mb-2">Welcome Back!</h2>
+        <h2 className="text-2xl font-bold mb-2">Welcome Back, {currentUser?.name}!</h2>
         <p className="opacity-90 text-sm mb-4">Ready to build your next income stream?</p>
         <button
-          onClick={() => setCurrentView(AppView.WIZARD)}
+          onClick={() => { setActiveProject(null); handleNavigation(AppView.WIZARD); }}
           className="bg-white text-blue-700 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 hover:bg-blue-50 transition-colors shadow-sm"
         >
           <Plus size={16} /> New Funnel
@@ -234,8 +303,11 @@ const App: React.FC = () => {
         ) : (
           <div className="space-y-3 pb-20">
             {projects.map(p => (
-              <div key={p.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
+              <div key={p.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group">
+                <div 
+                    onClick={() => handleOpenProject(p)}
+                    className="flex justify-between items-start cursor-pointer"
+                >
                     <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-lg shrink-0 ${
                             p.type === 'STRATEGY' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 
@@ -252,7 +324,7 @@ const App: React.FC = () => {
                             {p.type === 'CHAT_SESSION' && <MessageSquare size={20} />}
                         </div>
                         <div>
-                            <h4 className="font-semibold text-gray-800 dark:text-gray-200 line-clamp-1">{p.name}</h4>
+                            <h4 className="font-semibold text-gray-800 dark:text-gray-200 line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{p.name}</h4>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 capitalize">
                                 {p.type === 'CAMPAIGN_WA' ? 'WhatsApp Campaign' : p.type === 'CHAT_SESSION' ? 'Chat Coach Session' : p.type.toLowerCase().replace('_', ' ')} • {new Date(p.createdAt).toLocaleDateString()}
                             </p>
@@ -263,18 +335,28 @@ const App: React.FC = () => {
                 <div className="mt-4 flex gap-2">
                     {p.type === 'STRATEGY' && (
                         <button 
-                            onClick={() => handleGenerateEmails(p)}
+                            onClick={(e) => { e.stopPropagation(); handleGenerateEmails(p); }}
                             className="flex-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/30"
                         >
                             <Mail size={12} /> Email Sequence
                         </button>
                     )}
-                    <button 
-                        onClick={() => handleDownloadPDF(p)}
-                        className="flex-1 text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-gray-200 dark:hover:bg-gray-600"
-                    >
-                         <Download size={12} /> PDF
-                    </button>
+                    {(p.type === 'STRATEGY' || p.type === 'COPY' || p.type === 'CAMPAIGN_EMAIL') && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleDownloadPDF(p); }}
+                            className="flex-1 text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-gray-200 dark:hover:bg-gray-600"
+                        >
+                            <Download size={12} /> Download
+                        </button>
+                    )}
+                     {p.type === 'CHAT_SESSION' && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleOpenProject(p); }}
+                            className="flex-1 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/30"
+                        >
+                            <ArrowRight size={12} /> Resume Chat
+                        </button>
+                    )}
                 </div>
               </div>
             ))}
@@ -284,18 +366,42 @@ const App: React.FC = () => {
     </div>
   );
 
+  // AUTH GUARD
+  if (!currentUser) {
+      return <AuthScreen onLogin={handleLogin} />;
+  }
+
   return (
-    <Layout currentView={currentView} onNavigate={setCurrentView}>
-      {currentView === AppView.DASHBOARD && renderDashboard()}
-      {currentView === AppView.WIZARD && <FunnelWizard onComplete={handleSaveProject} onToolRequest={handleToolRequest} />}
-      {currentView === AppView.CHAT && <ChatCoach onSave={handleSaveProject} />}
-      {currentView === AppView.TOOLS && (
-        <QuickTools 
-            initialTopic={toolParams?.topic} 
-            initialType={toolParams?.type} 
-            onSave={handleSaveProject}
-        />
-      )}
+    <Layout 
+        currentView={currentView} 
+        onNavigate={handleNavigation}
+        user={currentUser}
+        onLogout={handleLogout}
+    >
+      <div key={currentView} className={`h-full ${getAnimationClass()}`}>
+        {currentView === AppView.DASHBOARD && renderDashboard()}
+        {currentView === AppView.WIZARD && (
+            <FunnelWizard 
+                onAutoSave={handleAutoSave} 
+                onToolRequest={handleToolRequest} 
+                onDownload={handleDownloadPDF} 
+                initialData={activeProject?.type === 'STRATEGY' ? activeProject : undefined} 
+            />
+        )}
+        {currentView === AppView.CHAT && (
+            <ChatCoach 
+                onAutoSave={handleAutoSave} 
+                initialProject={activeProject?.type === 'CHAT_SESSION' ? activeProject : undefined} 
+            />
+        )}
+        {currentView === AppView.TOOLS && (
+            <QuickTools 
+                initialTopic={toolParams?.topic} 
+                initialType={toolParams?.type} 
+                onAutoSave={handleAutoSave}
+            />
+        )}
+      </div>
     </Layout>
   );
 };

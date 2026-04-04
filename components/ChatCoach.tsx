@@ -2,37 +2,101 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createChatSession } from '../services/gemini';
 import { ChatMessage, FunnelProject } from '../types';
-import { Send, Loader2, Bot, User, Trash2, Save } from 'lucide-react';
+import { Send, Loader2, Bot, Trash2, Plus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { GenerateContentResponse, Chat } from '@google/genai';
 import VoiceInput from './VoiceInput';
 
 interface ChatCoachProps {
-  onSave: (project: FunnelProject) => void;
+  onAutoSave: (project: FunnelProject) => void;
+  initialProject?: FunnelProject;
 }
 
-const ChatCoach: React.FC<ChatCoachProps> = ({ onSave }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'model',
-      text: "Hey! I'm your FunnelMate coach. Ask me anything about affiliate marketing, traffic, or copywriting!",
-      timestamp: Date.now()
-    }
-  ]);
+const ChatCoach: React.FC<ChatCoachProps> = ({ onAutoSave, initialProject }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string>(Date.now().toString());
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Use a ref to persist the chat session across renders, but initialize lazily
   const chatSessionRef = useRef<Chat | null>(null);
 
+  // Parse initial content if resuming a chat
   useEffect(() => {
-    // Initialize chat session once on mount
+    if (initialProject && initialProject.type === 'CHAT_SESSION') {
+        setSessionId(initialProject.id);
+        
+        // Simple parser to restore visual state from the markdown content
+        // Note: In a real app, we would store the message array JSON in the project.
+        // Here we attempt to reconstruct or just start fresh if it's too complex.
+        const lines = initialProject.content.split('\n\n');
+        const restored: ChatMessage[] = lines.map((line, idx) => {
+            let role: 'user' | 'model' = 'model';
+            let text = line;
+            if (line.startsWith('**You:**')) {
+                role = 'user';
+                text = line.replace('**You:** ', '');
+            } else if (line.startsWith('**Coach:**')) {
+                role = 'model';
+                text = line.replace('**Coach:** ', '');
+            }
+            return {
+                id: `restored-${idx}`,
+                role,
+                text,
+                timestamp: initialProject.createdAt
+            };
+        });
+        
+        if (restored.length > 0) {
+            setMessages(restored);
+        } else {
+             setMessages([{
+                id: 'welcome',
+                role: 'model',
+                text: "Welcome back! How can I help with your funnel today?",
+                timestamp: Date.now()
+            }]);
+        }
+    } else {
+        setMessages([{
+            id: 'welcome',
+            role: 'model',
+            text: "Hey! I'm your FunnelMate coach. Ask me anything about affiliate marketing, traffic, or copywriting!",
+            timestamp: Date.now()
+        }]);
+    }
+
+    // Initialize Gemini Chat
     if (!chatSessionRef.current) {
         chatSessionRef.current = createChatSession();
     }
-  }, []);
+  }, [initialProject]);
+
+  // Auto-Save Effect
+  useEffect(() => {
+    if (messages.length <= 1) return; // Don't save empty/welcome chats
+
+    const timeoutId = setTimeout(() => {
+        const content = messages.map(m => `**${m.role === 'model' ? 'Coach' : 'You'}:** ${m.text}`).join('\n\n');
+        const firstUserMessage = messages.find(m => m.role === 'user')?.text || 'New Session';
+        const shortName = firstUserMessage.length > 30 ? firstUserMessage.substring(0, 30) + '...' : firstUserMessage;
+
+        const project: FunnelProject = {
+            id: sessionId,
+            name: `Chat: ${shortName}`,
+            type: 'CHAT_SESSION',
+            content: content,
+            niche: 'Coaching',
+            productName: 'Chat History',
+            targetAudience: 'User',
+            createdAt: initialProject ? initialProject.createdAt : Date.now()
+        };
+        
+        onAutoSave(project);
+    }, 1000); // Debounce save by 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [messages, sessionId, onAutoSave, initialProject]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -96,38 +160,15 @@ const ChatCoach: React.FC<ChatCoachProps> = ({ onSave }) => {
     }
   };
 
-  const clearChat = () => {
-      setMessages([ {
+  const startNewChat = () => {
+      setSessionId(Date.now().toString());
+      setMessages([{
         id: 'welcome',
         role: 'model',
-        text: "Chat cleared! What's on your mind now?",
+        text: "New chat started! What's on your mind?",
         timestamp: Date.now()
       }]);
-      // Re-init session
       chatSessionRef.current = createChatSession();
-  };
-
-  const handleSaveChat = () => {
-      if (messages.length <= 1) return;
-      
-      const content = messages.map(m => `**${m.role === 'model' ? 'Coach' : 'You'}:** ${m.text}`).join('\n\n');
-      
-      const firstUserMessage = messages.find(m => m.role === 'user')?.text || 'Session';
-      const shortName = firstUserMessage.length > 20 ? firstUserMessage.substring(0, 20) + '...' : firstUserMessage;
-
-      const project: FunnelProject = {
-          id: Date.now().toString(),
-          name: `Chat: ${shortName}`,
-          type: 'CHAT_SESSION',
-          content: content,
-          niche: 'Coaching',
-          productName: 'Chat History',
-          targetAudience: 'User',
-          createdAt: Date.now()
-      };
-      
-      onSave(project);
-      alert("Chat saved to projects!");
   };
 
   return (
@@ -139,25 +180,16 @@ const ChatCoach: React.FC<ChatCoachProps> = ({ onSave }) => {
                 <Bot size={18} />
             </div>
             <div>
-                <h2 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">AI Marketing Coach</h2>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400">Powered by Gemini 3 Pro</p>
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">AI Coach</h2>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">Auto-saving to history</p>
             </div>
         </div>
         <div className="flex items-center gap-2">
             <button 
-                onClick={handleSaveChat} 
-                disabled={messages.length <= 1}
-                className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Save Chat Session"
+                onClick={startNewChat} 
+                className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             >
-                <Save size={18} />
-            </button>
-            <button 
-                onClick={clearChat} 
-                className="text-gray-400 hover:text-red-500 transition-colors"
-                title="Clear Chat"
-            >
-                <Trash2 size={18} />
+                <Plus size={14} /> New Chat
             </button>
         </div>
       </div>
@@ -204,16 +236,20 @@ const ChatCoach: React.FC<ChatCoachProps> = ({ onSave }) => {
       <div className="p-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 transition-colors">
         <div className="flex gap-2">
           <div className="flex-1 relative">
-            <input
-              type="text"
+            <textarea
+              rows={1}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                  setInputText(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+              }}
               onKeyDown={handleKeyPress}
               placeholder="Ask about strategy..."
-              className="w-full bg-gray-100 dark:bg-gray-700 dark:text-white border-0 rounded-full pl-4 pr-10 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:placeholder-gray-400 transition-colors"
+              className="w-full bg-gray-100 dark:bg-gray-700 dark:text-white border-0 rounded-2xl pl-4 pr-10 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:placeholder-gray-400 transition-colors resize-none overflow-hidden min-h-[44px]"
               disabled={isTyping}
             />
-            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+            <div className="absolute right-1 top-2">
                <VoiceInput onTranscript={handleVoiceInput} />
             </div>
           </div>
